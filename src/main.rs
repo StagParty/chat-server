@@ -1,24 +1,41 @@
-use actix_web::{get, web, App, HttpRequest, HttpServer};
-use actix_web_actors::ws;
+use actix_web::{App, HttpServer};
+
+use chat_server_rpc::chat_server_server::{ChatServer, ChatServerServer};
+use chat_server_rpc::{CreateRoomRequest, CreateRoomResponse};
+use tonic::transport::Server;
+use tonic::{Request, Response, Status};
 
 mod server;
 
-// TODO - Maybe use gRPC to create rooms?
-#[get("/createroom")]
-async fn create_room(req: HttpRequest, stream: web::Payload) -> String {
-    if let Some(event_code) = req.headers().get("EVENT_CODE") {
-        let _ = ws::start(server::WSRoom::new("sdfdfs".to_owned()), &req, stream);
-        println!("{}", event_code.to_str().unwrap());
+pub mod chat_server_rpc {
+    tonic::include_proto!("chatserver");
+}
 
-        "Created Event Room!".to_owned()
-    } else {
-        "EVENT_CODE Header not found!".to_owned()
+#[derive(Debug, Default)]
+pub struct ChatServerService {}
+
+#[tonic::async_trait]
+impl ChatServer for ChatServerService {
+    async fn create_room(&self, request: Request<CreateRoomRequest>) -> Result<Response<CreateRoomResponse>, Status> {
+        let req = request.into_inner();
+        println!("Creating new room for event {}", req.event_code);
+
+        // TODO - Create actual room
+
+        let reply = CreateRoomResponse { successful: true };
+        Ok(Response::new(reply))
     }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(create_room))
+    let chat_server_service = ChatServerService::default();
+    Server::builder()
+        .add_service(ChatServerServer::new(chat_server_service))
+        .serve("[::1]:50051".parse().unwrap())
+        .await.unwrap();
+
+    HttpServer::new(|| App::new())
         .bind(("0.0.0.0", 8060))?
         .run()
         .await
