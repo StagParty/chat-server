@@ -3,6 +3,7 @@ package chatserver;
 
 service ChatServer {
     rpc CreateRoom (CreateRoomRequest) returns (CreateRoomResponse);
+    rpc GenerateJoinToken(JoinTokenRequest) returns (JoinTokenResponse);
 }
 
 message CreateRoomRequest {
@@ -11,4 +12,13 @@ message CreateRoomRequest {
 
 message CreateRoomResponse {
     bool successful = 1;
+}
+
+message JoinTokenRequest {
+    string event_code = 1;
+}
+
+message JoinTokenResponse {
+    bool successful = 1;
+    string token = 2;
 }
