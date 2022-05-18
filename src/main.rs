@@ -146,63 +146,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn verify_token(msg: Message, rooms: Rooms, tokens: Tokens) -> Option<(User, Room)> {
+    let token = msg.to_str().ok()?;
+    let user = tokens.write().await.remove(token)?;
+
+    let token_split: Vec<_> = token.split(":").collect();
+    let token_ts_utc: u64 = token_split.get(1).unwrap().parse().unwrap();
+    let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+
+    if since_epoch.as_secs() - token_ts_utc > JOIN_TOKEN_VALIDITY.as_secs() {
+        return None;
+    }
+
+    let rooms_read = rooms.read().await;
+    let room = rooms_read.get(&user.event_code)?;
+    room.write().await.insert(user.clone());
+
+    Some((user, room.clone()))
+}
+
 async fn user_connected(ws: WebSocket, rooms: Rooms, tokens: Tokens) {
     println!("New WS connection");
-
-    let mut me: Option<User> = None;
-    let mut my_room: Option<Room> = None;
 
     let (mut user_ws_tx, mut user_ws_rx) = ws.split();
 
     // Verify token
-    let token_valid: bool = if let Some(res) = user_ws_rx.next().await {
+    let verify_result = if let Some(res) = user_ws_rx.next().await {
         match res {
-            Ok(msg) => {
-                if let Ok(token) = msg.to_str() {
-                    if let Some(user) = tokens.write().await.remove(token) {
-                        let token_split: Vec<_> = token.split(":").collect();
-                        let token_ts_utc: u64 = token_split.get(1).unwrap().parse().unwrap();
-                        let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-
-                        if since_epoch.as_secs() - token_ts_utc < JOIN_TOKEN_VALIDITY.as_secs() {
-                            let rooms_read = rooms.read().await;
-
-                            if let Some(room) = rooms_read.get(&user.event_code) {
-                                room.write().await.insert(user.clone());
-                                me = Some(user);
-                                my_room = Some(room.clone());
-
-                                true
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
+            Ok(msg) => verify_token(msg, rooms, tokens).await,
             Err(e) => {
                 eprintln!("Token verification error: {e}");
-                false
+                None
             }
         }
     } else {
-        false
+        None
     };
 
-    if !token_valid {
+    if !verify_result.is_some() {
         println!("New user failed to verify token!");
         return;
     }
 
-    let me = me.unwrap();
-    let my_room = my_room.unwrap();
-    println!("Token verified successfully for user {} joining event {}", me.id, me.event_code);
+    let (me, my_room) = verify_result.unwrap();
+
+    println!(
+        "Token verified successfully for user {} joining event {}",
+        me.id, me.event_code
+    );
 
     // Unbound channels for buffering messages
     let (tx, rx) = mpsc::unbounded_channel();
