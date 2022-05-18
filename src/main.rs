@@ -51,7 +51,7 @@ impl ChatServer for ChatServerService {
 
         let reply = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(now) => {
-                let token = format!("{}:{}", hash, now.as_secs());
+                let token = format!("{}:{}:{}", hash, now.as_secs(), event_code);
                 self.tokens.write().await.insert(token.clone());
                 println!("Generated new token: {}", token);
 
