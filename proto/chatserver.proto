@@ -15,10 +15,12 @@ message CreateRoomResponse {
 }
 
 message JoinTokenRequest {
-    string event_code = 1;
+    string event_code   = 1;
+    int32 user_id       = 2;
+    string username     = 3;
 }
 
 message JoinTokenResponse {
     bool successful = 1;
-    string token = 2;
+    string token    = 2;
 }
