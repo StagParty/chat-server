@@ -1,13 +1,17 @@
-use std::{time::{Duration, SystemTime, UNIX_EPOCH}, collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use chat_server_rpc::{
     chat_server_server::{ChatServer, ChatServerServer},
-    CreateRoomRequest, CreateRoomResponse, JoinTokenRequest, JoinTokenResponse
+    CreateRoomRequest, CreateRoomResponse, JoinTokenRequest, JoinTokenResponse,
 };
-use tonic::{transport::Server, Request, Response, Status};
-use warp::{ws::WebSocket, Filter};
-use uuid::Uuid;
 use tokio::sync::RwLock;
+use tonic::{transport::Server, Request, Response, Status};
+use uuid::Uuid;
+use warp::{ws::WebSocket, Filter};
 
 pub mod chat_server_rpc {
     tonic::include_proto!("chatserver");
@@ -37,7 +41,10 @@ impl ChatServer for ChatServerService {
         Ok(Response::new(reply))
     }
 
-    async fn generate_join_token(&self, request: Request<JoinTokenRequest>) -> Result<Response<JoinTokenResponse>, Status> {
+    async fn generate_join_token(
+        &self,
+        request: Request<JoinTokenRequest>,
+    ) -> Result<Response<JoinTokenResponse>, Status> {
         let req = request.into_inner();
         let event_code = req.event_code;
         let hash = sha256::digest(Uuid::new_v4().to_string() + event_code.as_ref());
