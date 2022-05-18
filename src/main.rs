@@ -1,16 +1,26 @@
+use std::{time::{Duration, SystemTime, UNIX_EPOCH}, collections::HashSet, sync::Arc};
+
 use chat_server_rpc::{
     chat_server_server::{ChatServer, ChatServerServer},
-    CreateRoomRequest, CreateRoomResponse,
+    CreateRoomRequest, CreateRoomResponse, JoinTokenRequest, JoinTokenResponse
 };
 use tonic::{transport::Server, Request, Response, Status};
 use warp::{ws::WebSocket, Filter};
+use uuid::Uuid;
+use tokio::sync::RwLock;
 
 pub mod chat_server_rpc {
     tonic::include_proto!("chatserver");
 }
 
+type Tokens = Arc<RwLock<HashSet<String>>>;
+
+const JOIN_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
+
 #[derive(Debug, Default)]
-pub struct ChatServerService {}
+pub struct ChatServerService {
+    tokens: Tokens,
+}
 
 #[tonic::async_trait]
 impl ChatServer for ChatServerService {
@@ -26,11 +36,41 @@ impl ChatServer for ChatServerService {
         let reply = CreateRoomResponse { successful: true };
         Ok(Response::new(reply))
     }
+
+    async fn generate_join_token(&self, request: Request<JoinTokenRequest>) -> Result<Response<JoinTokenResponse>, Status> {
+        let req = request.into_inner();
+        let event_code = req.event_code;
+        let hash = sha256::digest(Uuid::new_v4().to_string() + event_code.as_ref());
+
+        let reply = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(now) => {
+                let token = format!("{}:{}", hash, now.as_secs());
+                self.tokens.write().await.insert(token.clone());
+                println!("Generated new token: {}", token);
+
+                JoinTokenResponse {
+                    successful: true,
+                    token,
+                }
+            }
+            Err(_) => {
+                eprintln!("Error generating join token: System Time earlier than UNIX Epoch!");
+                JoinTokenResponse {
+                    successful: false,
+                    token: "".to_owned(),
+                }
+            }
+        };
+        Ok(Response::new(reply))
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chat_server_service = ChatServerService::default();
+    let tokens = Arc::new(RwLock::new(HashSet::default()));
+
+    let chat_server_service = ChatServerService { tokens };
+
     Server::builder()
         .add_service(ChatServerServer::new(chat_server_service))
         .serve("[::1]:50051".parse()?)
@@ -38,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat = warp::path("chat")
         .and(warp::ws())
-        .map(|ws: warp::ws::Ws| ws.on_upgrade(|sock| user_connected(sock)));
+        .map(|ws: warp::ws::Ws| ws.on_upgrade(move |sock| user_connected(sock)));
 
     warp::serve(chat).run(([0, 0, 0, 0], 8060)).await;
     Ok(())
