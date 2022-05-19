@@ -11,7 +11,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-warp = { version = "^0.3", features = ["websocket"] }
+warp = { version = "^0.3", features = ["websocket", "tls"] }
 tonic = "^0.7"
 prost = "^0.10"
 tokio = { version = "^1.18", features = ["macros", "rt-multi-thread"] }

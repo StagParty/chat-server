@@ -40,9 +40,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ws.on_upgrade(move |sock| user_connected(sock, rooms, tokens))
         });
 
-    let ws_server = warp::serve(chat).run(([127, 0, 0, 1], 8060));
+    let ws_handle = match std::env::var("USE_TLS") {
+        Ok(_) => {
+            let ws_server = warp::serve(chat)
+                .tls()
+                .cert_path("ssl/cert.pem")
+                .key_path("ssl/cert.key")
+                .run(([127, 0, 0, 1], 8060));
 
-    let ws_handle = tokio::spawn(ws_server);
+            println!("Using TLS for WebSockets!");
+            tokio::spawn(ws_server)
+        }
+        Err(_) => {
+            let ws_server = warp::serve(chat).run(([127, 0, 0, 1], 8060));
+            tokio::spawn(ws_server)
+        }
+    };
     let rpc_handle = tokio::spawn(rpc_server);
 
     println!("WS and RPC Servers Started!");
