@@ -1,123 +1,28 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chat_server_rpc::{
-    chat_server_server::{ChatServer, ChatServerServer},
-    CreateRoomRequest, CreateRoomResponse, JoinTokenRequest, JoinTokenResponse,
-};
 use futures_util::{SinkExt, StreamExt, TryFutureExt};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{transport::Server, Request, Response, Status};
-use uuid::Uuid;
+use tonic::transport::Server;
 use warp::{
     ws::{Message, WebSocket},
     Filter,
 };
 
-pub mod chat_server_rpc {
-    tonic::include_proto!("chatserver");
-}
+use rpc::chat_server_rpc::chat_server_server::ChatServerServer;
+use types::{Room, Rooms, Tokens, User};
 
-type Tokens = Arc<RwLock<HashMap<String, User>>>; // key = token, value = user info
-type Room = Arc<RwLock<HashSet<User>>>;
-type Rooms = Arc<RwLock<HashMap<String, Room>>>; // key = event code, value = HashSet of users
+mod rpc;
+mod types;
 
 const JOIN_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
-
-#[derive(Eq, Hash, PartialEq, Clone)]
-struct User {
-    id: i32,
-    username: String,
-    event_code: String,
-}
-
-struct ChatServerService {
-    rooms: Rooms,
-    tokens: Tokens,
-}
-
-#[tonic::async_trait]
-impl ChatServer for ChatServerService {
-    async fn create_room(
-        &self,
-        request: Request<CreateRoomRequest>,
-    ) -> Result<Response<CreateRoomResponse>, Status> {
-        let req = request.into_inner();
-        let event_code = req.event_code;
-
-        let reply = if self.rooms.read().await.contains_key(&event_code) {
-            println!("Room with code {} already exists", event_code);
-            CreateRoomResponse { successful: false }
-        } else {
-            let users = Room::default();
-            self.rooms.write().await.insert(event_code.clone(), users);
-
-            println!("Created new room for event {}", event_code);
-            CreateRoomResponse { successful: true }
-        };
-        Ok(Response::new(reply))
-    }
-
-    async fn generate_join_token(
-        &self,
-        request: Request<JoinTokenRequest>,
-    ) -> Result<Response<JoinTokenResponse>, Status> {
-        let req = request.into_inner();
-        let event_code = req.event_code;
-
-        // Check whether the requested room exists
-        if !self.rooms.read().await.contains_key(&event_code) {
-            println!("Room {} for token request does not exist!", event_code);
-            return Ok(Response::new(JoinTokenResponse {
-                successful: false,
-                token: "".to_owned(),
-            }));
-        }
-
-        let hash = sha256::digest(Uuid::new_v4().to_string() + event_code.as_ref());
-
-        let reply = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(now) => {
-                let token = format!("{}:{}", hash, now.as_secs());
-                let user = User {
-                    id: req.user_id,
-                    username: req.username,
-                    event_code,
-                };
-
-                self.tokens.write().await.insert(token.clone(), user);
-                println!("Generated new token: {}", token);
-
-                JoinTokenResponse {
-                    successful: true,
-                    token,
-                }
-            }
-            Err(_) => {
-                eprintln!("Error generating join token: System Time earlier than UNIX Epoch!");
-                JoinTokenResponse {
-                    successful: false,
-                    token: "".to_owned(),
-                }
-            }
-        };
-        Ok(Response::new(reply))
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rooms = Rooms::default();
     let tokens = Tokens::default();
 
-    let chat_server_service = ChatServerService {
-        rooms: rooms.clone(),
-        tokens: tokens.clone(),
-    };
+    let chat_server_service = rpc::ChatServerService::new(rooms.clone(), tokens.clone());
 
     let rpc_server = Server::builder()
         .add_service(ChatServerServer::new(chat_server_service))
