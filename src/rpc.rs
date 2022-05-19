@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::types::{Room, Rooms, Tokens, User};
+use crate::types::{Room, Rooms, TokenUser, Tokens};
 use chat_server_rpc::{
     chat_server_server::ChatServer, CreateRoomRequest, CreateRoomResponse, JoinTokenRequest,
     JoinTokenResponse,
@@ -66,7 +66,7 @@ impl ChatServer for ChatServerService {
         let reply = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(now) => {
                 let token = format!("{}:{}", hash, now.as_secs());
-                let user = User {
+                let user = TokenUser {
                     id: req.user_id,
                     username: req.username,
                     event_code,
