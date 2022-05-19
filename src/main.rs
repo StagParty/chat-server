@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rpc_server = Server::builder()
         .add_service(ChatServerServer::new(chat_server_service))
-        .serve("[::1]:50051".parse()?);
+        .serve("0.0.0.0:50051".parse()?);
 
     // Turn the collections into Filters
     let rooms_filter = warp::any().map(move || rooms.clone());
@@ -47,12 +47,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .tls()
             .cert_path("ssl/cert.pem")
             .key_path("ssl/cert.key")
-            .run(([127, 0, 0, 1], 8060));
+            .run(([0, 0, 0, 0], 8060));
 
         println!("Using TLS for WebSockets!");
         tokio::spawn(ws_server)
     } else {
-        let ws_server = warp::serve(chat).run(([127, 0, 0, 1], 8060));
+        let ws_server = warp::serve(chat).run(([0, 0, 0, 0], 8060));
         tokio::spawn(ws_server)
     };
     let rpc_handle = tokio::spawn(rpc_server);

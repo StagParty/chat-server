@@ -5,6 +5,7 @@ WORKDIR /chat-server
 RUN cargo install --path .
 
 FROM debian:buster-slim
-RUN rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local/cargo/bin/stagparty_chat_server /usr/local/bin/stagparty_chat_server
-CMD ["stagparty_chat_server"]
+COPY . /chat-server
+WORKDIR /chat-server
+CMD ["stagparty_chat_server", "--use-tls"]
